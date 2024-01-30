@@ -1,0 +1,59 @@
+using Admin.Models;
+using AutoMapper;
+using AutoMapper.QueryableExtensions;
+using Entities;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Services;
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using WebFramework.Api;
+
+namespace API.Controllers.v1
+{
+    [ApiVersion("1")]
+    public class TamrinUserController : Controller
+    {
+        public readonly UserManager<User> userManager;
+        public readonly IMapper mapper;
+        private readonly IJwtService jwtService;
+
+        public TamrinUserController(UserManager<User> userManager, IMapper mapper, IJwtService jwtService)
+        {
+            this.userManager = userManager;
+            this.mapper = mapper;
+            this.jwtService = jwtService;
+        }
+
+        [HttpGet("[Action]")]
+        [AllowAnonymous]
+        public async Task<ActionResult> ListUser()
+        {
+            var ListUser = await userManager.Users.ProjectTo<UserDto>(mapper.ConfigurationProvider).Where(x=>x.IsActive).ToListAsync();
+            return Ok(ListUser);
+        }
+
+        [HttpGet("[Action]")]
+        [AllowAnonymous]
+        public async Task<ActionResult> ActiveDeactiveUser(Guid Id)
+        {
+            var user = await userManager.Users.FirstOrDefaultAsync(x => x.Id == Id);
+            await userManager.DeleteAsync(user);
+            return Ok();
+        }
+
+        [HttpPut("[Action]")]
+        [AllowAnonymous]
+        public async Task<ActionResult> UpdateUser(Guid Id,UserDto Dto)
+        {
+            var user = await userManager.FindByIdAsync(Id.ToString());
+            user = Dto.ToEntity(mapper, user);
+            await userManager.UpdateAsync(user);
+            return Ok();
+        }
+    }
+}
