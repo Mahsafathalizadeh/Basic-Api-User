@@ -1,0 +1,147 @@
+using Admin.Models;
+using Admin.Models.Authentication;
+using AutoMapper;
+using Entities;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Services;
+using System.Threading;
+using System.Threading.Tasks;
+using WebFramework.Api;
+
+namespace API.Controllers.v1
+{
+    [ApiVersion("1")]
+    public class TamrinAuthController : BaseController
+    {
+        public readonly UserManager<User> userManager;
+        public readonly IMapper mapper;
+        public readonly SignInManager<User> signInManager;
+        public readonly RoleManager<Role> roleManager;
+
+        public TamrinAuthController(UserManager<User> userManager, IMapper mapper, SignInManager<User> signInManager, RoleManager<Role> roleManager)
+        {
+            this.userManager = userManager;
+            this.mapper = mapper;
+            this.signInManager = signInManager;
+            this.roleManager = roleManager;
+        }
+
+        [HttpPost("[Action]")]
+        [AllowAnonymous]
+        public async Task<ActionResult<AccessToken>> SignUp(SignUpDto Dto)
+        {
+            var model = Dto.ToEntity(mapper);
+            
+            var UserCreated = new User()
+            {
+                UserName = model.Email,
+                Fname = model.Fname,
+                Lname = model.Lname,
+                Email = model.Email,
+                PhoneNumber = model.PhoneNumber
+            };
+            UserCreated.IsActive = true;
+            await userManager.CreateAsync(UserCreated, Dto.PassWord);
+            return Ok(model);
+        }
+
+        [HttpPost("[Action]")]
+        [AllowAnonymous]
+        public async Task<ActionResult<AccessToken>> Login(LoginDto Dto, CancellationToken cancellationToken)
+        {
+            var user = await userManager.FindByNameAsync(Dto.UserName);
+            if (user!=null)
+            {
+                var checkin = await signInManager.PasswordSignInAsync(user, Dto.Password, true,false);
+                if (checkin.Succeeded)
+                {
+                    return Ok();
+                }
+                else
+                {
+                    ModelState.AddModelError(Dto.UserName, "رمزعبور یا نام کاربری اشتباه است");
+                    return BadRequest(ModelState);
+                }
+            }
+            return BadRequest("the user not found"); 
+        }
+
+        [HttpPost("[Action]")]
+        [Authorize]
+        public async Task<ActionResult> Signout()
+        {
+            var user = await userManager.FindByNameAsync(HttpContext.User.Identity.Name);
+            await userManager.UpdateSecurityStampAsync(user);
+            return Ok();
+
+        }
+        [HttpPost("[Action]")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> AssignAdmin(string UserName)
+        {
+            var user = await userManager.FindByNameAsync(UserName);
+            var role = await roleManager.FindByNameAsync("Admin");
+            if (user != null)
+            {
+                if (role==null)
+                {
+                    var Role = new Role()
+                    {
+                        Name = "Admin",
+                        NormalizedName = "Admin",
+                        Description = "Admin"
+                    };
+                    await roleManager.CreateAsync(Role);
+                }
+                else
+                {
+                    await userManager.AddToRoleAsync(user, role.ToString());
+                    return Ok();
+                }  
+            }
+            return BadRequest("user not found");
+        }
+        [HttpPost("[Action]")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult> AssignSecretary(string UserName)
+        {
+            var user = await userManager.FindByNameAsync(UserName);
+            var role = await roleManager.FindByNameAsync("Secretary");
+            if (user != null)
+            {
+                if (role == null)
+                {
+                    var Role = new Role()
+                    {
+                        Name = "Secretary",
+                        NormalizedName = "Secretary",
+                        Description = "Secretary"
+                    };
+                    await roleManager.CreateAsync(Role);
+                }
+                else
+                {
+                    await userManager.AddToRoleAsync(user, role.ToString());
+                    return Ok();
+                }
+            }
+            return BadRequest("user not found");
+        }
+        [HttpPost("[Action]")]
+        [AllowAnonymous]
+        public async Task<ActionResult> ChangePass(ChangePssDto Dto)
+        {
+            var user = await userManager.FindByIdAsync(Dto.UserId.ToString());
+            var token = await userManager.GeneratePasswordResetTokenAsync(user);
+
+            var changepass = await userManager.ResetPasswordAsync(user, token, Dto.Pssword.ToString());
+            if (changepass.Succeeded)
+            {
+                return Ok("password changed.");
+            }
+            return BadRequest("pass did NOT change.try again");
+        }
+    }
+}
